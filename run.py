@@ -3,6 +3,8 @@ import networkx as nx
 import os
 from dotenv import load_dotenv
 from collections import OrderedDict
+from algos.bus_limit import assign_new_bus
+from algos.shortest_path import find_shortest_distance
 
 # Load .env
 load_dotenv()
@@ -74,15 +76,22 @@ def main():
     # Building graph
     G, all_stops = build_graph_from_database()
 
-    # Displaying Bus stops 
-    print("Available Bus Stops:")
+    # in case there are no stops or if the failed to load
+    if not all_stops:
+        print("No bus stops to display. Check the Database.")
+        return
+
+    print("\n\nAvailable Bus Stops:")
     for i, stop in enumerate(all_stops, 1):
         print(f"{i}. {stop}")
-
+    print(f"{len(all_stops)+1}. End Program")
     # Get user input
     while True:
         try:
             choice = int(input("\nEnter the number of your starting stop: "))
+            if(choice==len(all_stops)+1):
+                print("Program Ended...")
+                return
             if 1 <= choice <= len(all_stops):
                 start_stop = all_stops[choice - 1]
                 break
@@ -93,28 +102,26 @@ def main():
 
     # fixed university stop
     end_stop = "Graphic Era"
-
+    
     # Get shortest route
     distance, path = find_shortest_distance(G, start_stop, end_stop)
 
     if distance == float('inf'):
         print(f"\nNo path found from {start_stop} to {end_stop}")
         return
-
+    
     print(f"\nShortest path from {start_stop} to {end_stop}:")
     print(f"Total distance: {distance:.1f} km")
     print("Route: " + " → ".join(path))
 
     # Bus capacity system
     bus_capacity = 100
-    buses = split_route_by_capacity(path, G, bus_capacity)
-
+    buses = assign_new_bus(path, G, bus_capacity)
     print(f"\n Bus Planning (Capacity = {bus_capacity} students):")
     for i, bus in enumerate(buses, 1):
         print(f"\n Bus {i}")
         print(f"Route: {' → '.join(bus['route'])}")
-        print(f"Students on board: {bus['load']} / {bus_capacity}")
-
-
+        print(f"Students on board: {bus['cap']} / {bus_capacity}")
+        
 if __name__ == "__main__":
     main()
