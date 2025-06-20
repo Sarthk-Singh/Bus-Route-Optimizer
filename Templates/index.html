@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Dehradun Bus Route Optimizer</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+    header {
+      background-color: #007bff;
+      color: white;
+      text-align: center;
+      padding: 12px;
+    }
+    .container {
+      display: flex;
+      flex: 1;
+      height: calc(100vh - 60px);
+    }
+    .sidebar {
+      width: 300px;
+      background-color: #f4f4f4;
+      padding: 20px;
+      box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
+    }
+    #map {
+      flex: 1;
+      height: 100%;
+    }
+    select, .btn {
+      width: 100%;
+      padding: 12px;
+      margin-bottom: 15px;
+      font-size: 16px;
+      font-weight: bold;
+      border: none;
+      cursor: pointer;
+      border-radius: 5px;
+    }
+    .btn-optimize {
+      background-color: #28a745;
+      color: white;
+    }
+    .btn-clear {
+      background-color: #dc3545;
+      color: white;
+    }
+    #routeStats {
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    #routeStats strong {
+      display: inline-block;
+      width: 100px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h2>Dehradun Bus Route Optimizer</h2>
+  </header>
+  <div class="container">
+    <div class="sidebar">
+      <select id="routeDropdown">
+        <option value="">Select a Bus Stop</option>
+      </select>
+      <button class="btn btn-optimize">Optimize Route</button>
+      <button class="btn btn-clear">Clear Map</button>
+      <div id="routeStats" style="margin-top: 20px;"></div>
+    </div>
+    <div id="map"></div>
+  </div>
+
+  <script>
+    let map, currentRoute, infoWindow;
+    let stopsWithCoords = [];
+
+    function initMap() {
+      map = new google.maps.Map(document.getElementById("map"), {
+        center: { lat: 30.325, lng: 78.04 },
+        zoom: 12,
+      });
+      infoWindow = new google.maps.InfoWindow();
+
+      // Load stops
+      fetch("/api/stops_with_coords")
+        .then(res => res.json())
+        .then(data => {
+          stopsWithCoords = data;
+
+          // Populate dropdown
+          const dropdown = document.getElementById("routeDropdown");
+          data.forEach(stop => {
+            const opt = document.createElement("option");
+            opt.value = stop.name;
+            opt.textContent = stop.name;
+            dropdown.appendChild(opt);
+          });
+
+          // Place markers
+          data.forEach(stop => {
+            const marker = new google.maps.Marker({
+              position: { lat: stop.latitude, lng: stop.longitude },
+              map,
+              icon: stop.name === "Geu"? "http://maps.google.com/mapfiles/ms/icons/red-dot.png": "http://maps.google.com/mapfiles/ms/icons/blue-dot.png",
+              title: stop.name
+            });
+
+            marker.addListener("mouseover", () => {
+              infoWindow.setContent(`<strong>${stop.name}</strong>`);
+              infoWindow.open(map, marker);
+            });
+
+            marker.addListener("mouseout", () => infoWindow.close());
+          });
+        });
+    }
+
+    document.querySelector(".btn-optimize").addEventListener("click", () => {
+      const start = document.getElementById("routeDropdown").value;
+      if (!start) return alert("Please select a starting bus stop.");
+
+      fetch("/api/optimize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ start, capacity: 100 })
+      })
+      .then(res => res.json())
+      .then(json => {
+        if (json.error) return alert(json.error);
+        if (currentRoute) currentRoute.setMap(null);
+
+        const pathCoords = json.path.map(stopName => {
+          const stop = stopsWithCoords.find(s => s.name === stopName);
+          return stop ? { lat: stop.latitude, lng: stop.longitude } : null;
+        }).filter(Boolean);
+
+        currentRoute = new google.maps.Polyline({
+          path: pathCoords,
+          strokeColor: "#FF0000", 
+          strokeWeight: 4,
+          map: map
+        });
+
+        let busesHTML = "";
+        if (Array.isArray(json.buses)) {
+          busesHTML = json.buses.map((bus, i) => {
+          const cap = bus.cap ?? bus.load ?? "?";
+          const route = Array.isArray(bus.route) ? bus.route.join(" → ") : bus.route;
+          return `
+          <div style="margin-bottom: 10px;">
+           🚌 <strong>Bus ${i + 1}</strong><br>
+           &nbsp;&nbsp;• Capacity Used: <strong>${cap} students</strong><br>
+             &nbsp;&nbsp;• Route: ${route}
+             </div>
+  `;
+}).join("");
+
+        } else if (typeof json.buses === "object") {
+          busesHTML = JSON.stringify(json.buses);
+        } else {
+          busesHTML = String(json.buses);
+        }
+
+        document.getElementById("routeStats").innerHTML = `
+          <p><strong>Route:</strong>${json.path.join(" → ")}</p>
+          <p><strong>Distance:</strong>${json.distance.toFixed(1)} km</p>
+          <p><strong>Buses:</strong> <br> ${busesHTML}</p>
+        `;
+      })
+      .catch(err => {
+        console.error("Error:", err);
+        alert("Failed to optimize route.");
+      });
+    });
+
+    document.querySelector(".btn-clear").addEventListener("click", () => {
+      if (currentRoute) currentRoute.setMap(null);
+      document.getElementById("routeStats").innerHTML = "";
+    });
+  </script>
+
+  <script>
+  fetch("/api/map_key")
+    .then(res => res.json())
+    .then(data => {
+      const script = document.createElement("script");
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${data.key}&callback=initMap`;
+      script.async = true;
+      document.head.appendChild(script);
+    })
+    .catch(err => console.error("Failed to load map key:", err));
+</script>
+
+</body>
+</html>
