@@ -28,12 +28,15 @@ This Python-powered tool leverages advanced algorithms to streamline bus routing
    ```bash
    git clone https://github.com/Sarthk-Singh/Bus-Route-Optimizer.git
    cd Bus-Route-Optimizer
+   python3 -m venv venv
+   source venv/bin/activate
    ```
 
 2. **Install dependencies**:
 
    ```bash
    pip install -r requirements.txt
+   pip install flask flask-cors python-dotenv psycopg2-binary networkx
    ```
 
 3. **Run the optimizer**:
